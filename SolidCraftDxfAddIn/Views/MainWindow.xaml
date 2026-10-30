@@ -1,0 +1,922 @@
+<Window x:Class="ExportDxfAddIn.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SolidCraft DXF Exporter V20"
+        Width="1620" Height="760" WindowStartupLocation="CenterScreen"
+        xmlns:loc="clr-namespace:ExportDxfAddIn.Services"
+        xmlns:views="clr-namespace:ExportDxfAddIn.Views"
+        xmlns:hc="https://handyorg.github.io/handycontrol">
+
+    <Window.Resources>
+      <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <!-- HandyControl (MIT) — vendored trực tiếp vào Lib\HandyControl.dll (README mục 2),
+                 dùng để hiện đại hoá control mặc định (Button/CheckBox/TextBox/DataGrid...) +
+                 vài control chuyên dụng (SearchBar/Tag/Divider) cho khung sidebar mới (mục 6). -->
+            <ResourceDictionary Source="pack://application:,,,/HandyControl;component/Themes/SkinDefault.xaml"/>
+            <ResourceDictionary Source="pack://application:,,,/HandyControl;component/Themes/Theme.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
+
+        <!-- Ghi đè màu Primary mặc định của HandyControl (#326CF3) bằng đúng màu brand đã dùng
+             xuyên suốt add-in từ trước (#0078D7) — override key trực tiếp trong ResourceDictionary
+             của Window LUÔN thắng key cùng tên trong MergedDictionaries, không phụ thuộc thứ tự. -->
+        <Color x:Key="PrimaryColor">#FF0078D7</Color>
+        <Color x:Key="DarkPrimaryColor">#FF0078D7</Color>
+        <Color x:Key="LightPrimaryColor">#FFE4F0FC</Color>
+        <Color x:Key="TitleColor">#FF0078D7</Color>
+        <Color x:Key="SecondaryTitleColor">#FF0078D7</Color>
+
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+
+        <!-- Style nút filter dropdown giống Excel -->
+        <Style x:Key="FilterDropdownButton" TargetType="ToggleButton">
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="Padding" Value="4,1"/>
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="#BBBBBB"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Content" Value="▼"/>
+            <Setter Property="Foreground" Value="#666666"/>
+            <Setter Property="ToolTip">
+                <Setter.Value>
+                    <Binding Source="{x:Static loc:Tr.Instance}" Path="[Tooltip_FilterDropdown]"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style cho popup border -->
+        <Style x:Key="FilterPopupBorder" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#999999"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6"/>
+            <Setter Property="MinWidth" Value="220"/>
+            <Setter Property="CornerRadius" Value="3"/>
+        </Style>
+
+        <!-- Style nút "Làm mới Model" — pill outline, đảo màu khi hover, mờ khi đang tải -->
+        <Style x:Key="ModernRefreshButton" TargetType="Button">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#0078D7"/>
+            <Setter Property="BorderBrush" Value="#0078D7"/>
+            <Setter Property="BorderThickness" Value="1.3"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="16" SnapsToDevicePixels="True">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="6" Opacity="0.15" ShadowDepth="1" Color="#0078D7"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#0078D7"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#005A9E"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#005A9E"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#F2F2F2"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#DDDDDD"/>
+                                <Setter TargetName="border" Property="Effect" Value="{x:Null}"/>
+                                <Setter Property="Foreground" Value="#AAAAAA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style từng nấc (VI / EN) của bộ chuyển ngôn ngữ dạng segmented pill -->
+        <Style x:Key="LangSegmentToggle" TargetType="ToggleButton">
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#777777"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="segBorder" CornerRadius="11" Background="Transparent"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="segBorder" Property="Background" Value="#0078D7"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsChecked" Value="False"/>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter Property="Foreground" Value="#0078D7"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style 1 mục trong sidebar điều hướng trái (rail). Icon+nhãn xếp dọc, nền tối cố định
+             (không đổi theo theme sáng/tối của Windows — chủ đích, giữ rail luôn tương phản rõ).
+             Active = nền accent; Hover = nền xám nhạt; Disabled (mục "Sắp có") = mờ 55%, không hit-test. -->
+        <Style x:Key="NavRailButtonStyle" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Width" Value="64"/>
+            <Setter Property="Foreground" Value="#9AA5B5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="navBorder" CornerRadius="10" Background="Transparent" Padding="4,9,4,8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="navBorder" Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsChecked" Value="False"/>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="navBorder" Property="Background" Value="#2A3444"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style 1 thẻ chỉ số (Đã chọn/Sẵn sàng/Lỗi) ở Top Panel: số lớn + nhãn nhỏ, viền màu theo AccentBrush truyền qua Tag. -->
+        <Style x:Key="StatCardBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#DDE2E9"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10,6"/>
+        </Style>
+
+        <!-- Template dùng chung cho nội dung Popup của mọi cột -->
+        <DataTemplate x:Key="ExcelFilterPopupTemplate">
+            <Border Style="{StaticResource FilterPopupBorder}">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="8" Opacity="0.25" ShadowDepth="2"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Search Box -->
+                    <TextBox Grid.Row="0" Margin="0,0,0,6" Padding="4"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_SearchBox]}"/>
+
+                    <!-- Select All -->
+                    <CheckBox Grid.Row="1" Content="{Binding SelectAllText}" FontWeight="SemiBold" Margin="4,0,0,2"
+                              IsChecked="{Binding SelectAll}"/>
+
+                    <!-- Add current selection to filter -->
+                    <CheckBox Grid.Row="2" Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Text_AddCurrentSelection]}" Margin="16,2,0,4"
+                              IsChecked="{Binding AddCurrentSelection}"
+                              Visibility="{Binding ShowAddCurrentSelection, Converter={StaticResource BoolToVisConverter}}"/>
+
+                    <!-- Items List -->
+                    <ScrollViewer Grid.Row="3" MaxHeight="220" VerticalScrollBarVisibility="Auto" Margin="0,0,0,6">
+                        <ItemsControl ItemsSource="{Binding FilteredItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <!-- Thụt lề nhẹ giống tree view (Excel style) -->
+                                    <CheckBox Content="{Binding DisplayValue}" IsChecked="{Binding IsChecked}" Margin="16,2,0,2"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <Separator Grid.Row="4" Margin="0,0,0,6"/>
+
+                    <!-- Buttons -->
+                    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_OK]}" Command="{Binding ApplyCommand}" Width="60" Padding="4,2" Margin="0,0,8,0"/>
+                        <Button Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_FilterCancel]}" Command="{Binding CancelCommand}" Width="60" Padding="4,2"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+      </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Background="#F5F5F5">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ============ Sidebar điều hướng (app shell) ============
+             "Xuất DXF", "Lịch sử xuất" và "Cấu hình Layer" là 3 màn hình thật, chuyển đổi bằng cách
+             bật/tắt Visibility của ExportDxfContent/HistoryView/LayerConfigViewCtrl (3 ToggleButton độc
+             lập, tự loại trừ lẫn nhau trong code-behind — xem NavExportDxf_Click/NavHistory_Click/
+             NavLayerConfig_Click). Quy ước cho tính năng lớn tiếp theo: 1 UserControl mới + 1 mục ở
+             đây, không đụng layout của "Xuất DXF" đang có. -->
+        <Border Grid.Column="0" Background="#1F2733">
+            <DockPanel LastChildFill="False" Margin="0,18,0,14">
+                <StackPanel DockPanel.Dock="Top" HorizontalAlignment="Center">
+                    <Border Width="38" Height="38" CornerRadius="10" Margin="0,0,0,18">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#0078D7" Offset="0"/>
+                                <GradientStop Color="#0050A0" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <TextBlock Text="DXF" Foreground="White" FontWeight="Bold" FontSize="11"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Xuất DXF -->
+                    <ToggleButton x:Name="NavExportDxfToggle" Style="{StaticResource NavRailButtonStyle}"
+                                  IsChecked="True" Click="NavExportDxf_Click" Margin="0,0,0,4">
+                        <StackPanel>
+                            <!-- Icon vector (KHÔNG dùng emoji Unicode — đã thử và không render được khi
+                                 add-in chạy trong Inventor, xem mục 6b README): grid 2x2, tượng trưng bảng dữ liệu -->
+                            <Viewbox Width="17" Height="17" HorizontalAlignment="Center">
+                                <Canvas Width="22" Height="22">
+                                    <Path Data="M2,2 H9 V9 H2 Z M13,2 H20 V9 H13 Z M2,13 H9 V20 H2 Z M13,13 H20 V20 H13 Z"
+                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Nav_ExportDxf]}"
+                                       FontSize="10" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </ToggleButton>
+
+                    <!-- Lịch sử xuất: đọc từ file SQLite lịch sử Dxf Batch No của assembly tổng đang mở
+                         (DxfHistoryService/ExportHistoryView) -->
+                    <ToggleButton x:Name="NavHistoryToggle" Style="{StaticResource NavRailButtonStyle}"
+                                  Click="NavHistory_Click" Margin="0,0,0,4">
+                        <StackPanel>
+                            <!-- Icon vector: đồng hồ (vòng tròn + 2 kim) -->
+                            <Viewbox Width="17" Height="17" HorizontalAlignment="Center">
+                                <Canvas Width="22" Height="22">
+                                    <Ellipse Width="20" Height="20" Canvas.Left="1" Canvas.Top="1" StrokeThickness="1.8" Fill="Transparent"
+                                             Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                    <Path Data="M11,4 L11,11.5 L16,14" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Nav_ExportHistory]}"
+                                       FontSize="10" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </ToggleButton>
+
+                    <!-- Cấu hình Layer: đưa danh sách layer/màu ACI hard-code trong DxfPostProcessor.cs (README mục 5)
+                         ra 1 màn hình chỉnh được (LayerConfigView/LayerConfigService) -->
+                    <ToggleButton x:Name="NavLayerConfigToggle" Style="{StaticResource NavRailButtonStyle}"
+                                  Click="NavLayerConfig_Click" Margin="0,0,0,4">
+                        <StackPanel>
+                            <!-- Icon vector: mấy đường gạch ngang so le (list/layer config) -->
+                            <Viewbox Width="17" Height="17" HorizontalAlignment="Center">
+                                <Canvas Width="22" Height="22">
+                                    <Path Data="M3,6 H19 M3,11 H14 M3,16 H19" StrokeThickness="1.8"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Nav_LayerConfig]}"
+                                       FontSize="10" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </ToggleButton>
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Bottom" HorizontalAlignment="Center">
+                    <!-- Giới thiệu: mục duy nhất ngoài "Xuất DXF" thật sự hoạt động ngay, mở hộp thoại About -->
+                    <ToggleButton Style="{StaticResource NavRailButtonStyle}" Click="NavAbout_Click" Margin="0,0,0,10">
+                        <StackPanel>
+                            <!-- Icon vector: info (vòng tròn + chấm + thân chữ i) -->
+                            <Viewbox Width="17" Height="17" HorizontalAlignment="Center">
+                                <Canvas Width="22" Height="22">
+                                    <Ellipse Width="20" Height="20" Canvas.Left="1" Canvas.Top="1" StrokeThickness="1.8" Fill="Transparent"
+                                             Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                    <Ellipse Width="2.4" Height="2.4" Canvas.Left="9.8" Canvas.Top="6"
+                                             Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                    <Rectangle Width="2.4" Height="7" Canvas.Left="9.8" Canvas.Top="10" RadiusX="1.1" RadiusY="1.1"
+                                               Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Nav_About]}"
+                                       FontSize="10" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </ToggleButton>
+                    <TextBlock Text="V20" FontSize="9" FontWeight="Bold" Foreground="#5B6473" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ============ Nội dung chính: "Xuất DXF" (không đổi luồng dữ liệu/ViewModel) ============ -->
+        <Grid x:Name="ExportDxfContent" Grid.Column="1">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Panel: header (tiêu đề + VI/EN + Làm mới Model) tách riêng khỏi toolbar (đổi 2026-08-17,
+             theo đúng bố cục mockup đã duyệt trước khi code — xem ghi chú mục 6b README) -->
+        <StackPanel Grid.Row="0">
+
+            <!-- Header -->
+            <Border Background="White" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1" Padding="16,9">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Nav_ExportDxf]}"
+                                       FontSize="15" FontWeight="Bold" Foreground="#1B2330"/>
+                            <TextBlock Text="{Binding AssemblyFileName}" FontSize="11" Foreground="#8A93A3" Margin="0,2,0,0" MaxWidth="320" TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+
+                        <hc:Divider Orientation="Vertical" Margin="14,2,14,2"/>
+
+                        <!-- Cac nut thao tac nguon du lieu SolidCraft -->
+                        <Button Style="{StaticResource ButtonPrimary.Small}" Command="{Binding ConnectLiveCommand}"
+                                ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_ConnectLive]}"
+                                Margin="0,0,8,0" Padding="8,4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚡" FontSize="12" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_ConnectLive]}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button Style="{StaticResource ButtonDefault.Small}" Command="{Binding OpenDesignFileCommand}"
+                                ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_OpenFile]}"
+                                Margin="0,0,8,0" Padding="8,4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📁" FontSize="12" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_OpenFile]}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button Style="{StaticResource ButtonDefault.Small}" Command="{Binding ConfigureCliPathCommand}"
+                                ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_CliPath]}"
+                                Padding="6,4">
+                            <TextBlock Text="⚙" FontSize="13" VerticalAlignment="Center"/>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Góc phải: bộ chuyển ngôn ngữ (VI/EN) + Làm mới Model, cùng hàng và cùng chiều cao -->
+                    <StackPanel HorizontalAlignment="Right" Orientation="Vertical">
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Bộ chuyển ngôn ngữ dạng segmented pill -->
+                            <Border VerticalAlignment="Center" Margin="0,0,10,0"
+                                    CornerRadius="11" Background="#F0F1F3" BorderBrush="#E0E0E0" BorderThickness="1" Padding="2">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="4" Opacity="0.08" ShadowDepth="1"/>
+                                </Border.Effect>
+                                <StackPanel Orientation="Horizontal">
+                                    <ToggleButton Style="{StaticResource LangSegmentToggle}"
+                                                  IsChecked="{Binding Source={x:Static loc:Tr.Instance}, Path=IsVietnamese, Mode=OneWay}"
+                                                  Command="{Binding Source={x:Static loc:Tr.Instance}, Path=SetLanguageCommand}" CommandParameter="vi"
+                                                  ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_LangVi]}">
+                                        <TextBlock Text="🇻🇳 VI"/>
+                                    </ToggleButton>
+                                    <ToggleButton Style="{StaticResource LangSegmentToggle}"
+                                                  IsChecked="{Binding Source={x:Static loc:Tr.Instance}, Path=IsEnglish, Mode=OneWay}"
+                                                  Command="{Binding Source={x:Static loc:Tr.Instance}, Path=SetLanguageCommand}" CommandParameter="en"
+                                                  ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_LangEn]}">
+                                        <TextBlock Text="🇬🇧 EN"/>
+                                    </ToggleButton>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Làm mới Model: đọc lại toàn bộ BOM mới nhất từ Assembly đang mở trong Inventor -->
+                            <Button VerticalAlignment="Center" Style="{StaticResource ModernRefreshButton}" Command="{Binding RefreshModelCommand}"
+                                    ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_RefreshModel]}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#x27F3;" FontSize="13" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_RefreshModel]}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Text="{Binding LastRefreshedText}" FontSize="10.5" Foreground="#999999"
+                                   HorizontalAlignment="Right" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Toolbar: thẻ bo góc riêng, đổ bóng nhẹ -->
+            <Border Background="White" BorderBrush="#DDE2E9" BorderThickness="1" CornerRadius="10"
+                    Margin="10,10,10,0" Padding="10,7">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="10" Opacity="0.05" ShadowDepth="1" Color="#14283850"/>
+                </Border.Effect>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Label_AsmQty]}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="SemiBold"/>
+                    <TextBox Text="{Binding AsmQuantity, UpdateSourceTrigger=PropertyChanged}" Width="60" VerticalContentAlignment="Center" Padding="4,2" Margin="0,0,10,0"/>
+                    <Button Style="{StaticResource ButtonDefault.Small}" Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_Recalculate]}" Command="{Binding RecalculateCommand}" Width="80" Margin="0,0,10,0"/>
+
+                    <hc:Divider Orientation="Vertical" Margin="0,2,14,2"/>
+
+                    <CheckBox Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Chk_Combine]}" IsChecked="{Binding IsCombine}" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                    <CheckBox Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Chk_FlipUp]}" IsChecked="{Binding IsFlip}" VerticalAlignment="Center" Margin="0,0,14,0"/>
+
+                    <hc:Divider Orientation="Vertical" Margin="0,2,14,2"/>
+
+                    <hc:SearchBar Width="210" VerticalAlignment="Center"
+                                  Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                  ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_SearchBox]}"/>
+                    <Button Style="{StaticResource ButtonDefault.Small}" Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_ClearFilter]}" Width="90" Margin="10,0,0,0" Command="{Binding ClearAllFiltersCommand}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Thẻ chỉ số: số lớn + nhãn nhỏ. Trái: tổng Số lượng (cộng dồn theo cột Số lượng của
+                 các dòng đang hiển thị); phải: 4 thẻ trạng thái như cũ (thêm 2026-08-28) -->
+            <Grid Margin="10,8,10,10">
+                <Border Style="{StaticResource StatCardBorderStyle}" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding TotalQuantity}" FontSize="15" FontWeight="Bold" Foreground="#1B2330" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Label_TotalQuantity]}" FontSize="10" FontWeight="SemiBold" Foreground="#8A93A3" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Border Style="{StaticResource StatCardBorderStyle}" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding DisplayedCount}" FontSize="15" FontWeight="Bold" Foreground="#1B2330" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Label_DisplayedCount]}" FontSize="10" FontWeight="SemiBold" Foreground="#8A93A3" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource StatCardBorderStyle}" Background="{DynamicResource LightSuccessBrush}" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding ReadyCount}" FontSize="15" FontWeight="Bold" Foreground="#2DB84D" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Label_ReadyCount]}" FontSize="10" FontWeight="SemiBold" Foreground="#2DB84D" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource StatCardBorderStyle}" Background="{DynamicResource LightDangerBrush}" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding ErrorCount}" FontSize="15" FontWeight="Bold" Foreground="#DB3340" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Label_ErrorCount]}" FontSize="10" FontWeight="SemiBold" Foreground="#DB3340" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                    <!-- Dòng chưa bấm "Kiểm tra Flat Pattern" (Ghi chú = "Không xác định") — không tính
+                         vào Sẵn sàng lẫn Lỗi, xem MainViewModel.UpdateCounts / ExportRow.IsValidated -->
+                    <Border Style="{StaticResource StatCardBorderStyle}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding UncheckedCount}" FontSize="15" FontWeight="Bold" Foreground="#8A93A3" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Label_UncheckedCount]}" FontSize="10" FontWeight="SemiBold" Foreground="#8A93A3" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+
+        <!-- Data Grid -->
+        <DataGrid x:Name="MainDataGrid" Grid.Row="1" Margin="10,0,10,10" MinRowHeight="70" ColumnHeaderHeight="23" AutoGenerateColumns="False"
+                  CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
+                  SelectionMode="Extended" SelectionUnit="CellOrRowHeader" AlternatingRowBackground="#F9F9F9"
+                  Background="White" BorderBrush="#DDDDDD"
+                  EnableRowVirtualization="True"
+                  EnableColumnVirtualization="True"
+                  VirtualizingPanel.IsVirtualizing="True"
+                  VirtualizingPanel.VirtualizationMode="Recycling"
+                  VirtualizingPanel.ScrollUnit="Pixel"
+                  ItemsSource="{Binding ExportRows}"
+                  PreviewKeyDown="MainDataGrid_PreviewKeyDown"
+                  MouseDoubleClick="MainDataGrid_MouseDoubleClick">
+            <DataGrid.Resources>
+                <!-- Định nghĩa ở đây (không nhét thẳng vào Setter.Value của ElementStyle bên dưới)
+                     vì WPF KHÔNG cho compile Click="..." trên phần tử nằm trong Setter.Value (chỉ
+                     FrameworkTemplate như DataTemplate/ControlTemplate mới hỗ trợ event wiring qua
+                     content, xem README mục 21c) — resource named ở đây thì compile bình thường,
+                     Style bên dưới chỉ trỏ StaticResource vào. -->
+                <ContextMenu x:Key="AssemblyCellContextMenu">
+                    <MenuItem Header="{Binding Source={x:Static loc:Tr.Instance}, Path=[MenuItem_OpenAssembly]}" Click="MenuItemOpenAssembly_Click"/>
+                </ContextMenu>
+                <ContextMenu x:Key="PartNumberCellContextMenu">
+                    <MenuItem Header="{Binding Source={x:Static loc:Tr.Instance}, Path=[MenuItem_OpenPart]}" Click="MenuItemOpenPart_Click"/>
+                </ContextMenu>
+            </DataGrid.Resources>
+            <DataGrid.CellStyle>
+                <Style TargetType="DataGridCell">
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="#C7EED8"/>
+                            <Setter Property="Foreground" Value="Black"/>
+                            <Setter Property="BorderBrush" Value="#C7EED8"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.CellStyle>
+            <DataGrid.ColumnHeaderStyle>
+                <Style TargetType="DataGridColumnHeader">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Padding" Value="6,0"/>
+                </Style>
+            </DataGrid.ColumnHeaderStyle>
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="{Binding Source={x:Static loc:Tr.Instance}, Path=[Menu_Copy]}" Click="MenuItemCopy_Click"/>
+                    <MenuItem Header="{Binding Source={x:Static loc:Tr.Instance}, Path=[Menu_Paste]}" Click="MenuItemPaste_Click"/>
+                    <Separator/>
+                    <MenuItem Header="{Binding Source={x:Static loc:Tr.Instance}, Path=[Menu_ClearData]}" Click="MenuItemClear_Click"/>
+                </ContextMenu>
+            </DataGrid.ContextMenu>
+            <DataGrid.Columns>
+                <!-- ============ Assembly (assembly cha truc tiep) ============ -->
+                <DataGridTextColumn Binding="{Binding AssemblyName}" IsReadOnly="True" Width="190">
+                    <!-- Chuột phải mở Assembly cấp 1 của dòng này (mục 21 README). ElementStyle (không
+                         đổi sang DataGridTemplateColumn) để Copy/Paste (MainWindow.xaml.cs.GetCellValue,
+                         chỉ đọc được DataGridBoundColumn.Binding) không bị mất dữ liệu cột này, xem mục 6.
+                         Stretch + Background=Transparent bắt buộc để hit-test phủ toàn ô, không chỉ phần chữ. -->
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                            <Setter Property="VerticalAlignment" Value="Stretch"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Padding" Value="6,0"/>
+                            <Setter Property="ToolTip" Value="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_AssemblyCell]}"/>
+                            <EventSetter Event="ContextMenuOpening" Handler="RowCell_ContextMenuOpening"/>
+                            <Setter Property="ContextMenu" Value="{StaticResource AssemblyCellContextMenu}"/>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Header_Assembly]}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="toggleASM"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding DataContext.AssemblyFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource FilterDropdownButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.AssemblyFilter.IsActive, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True">
+                                                    <Setter Property="Foreground" Value="#0078D7"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                    <Setter Property="Content" Value="&#9660;&#10022;"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <Popup IsOpen="{Binding DataContext.AssemblyFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                       PlacementTarget="{Binding ElementName=toggleASM}" Placement="Bottom"
+                                       StaysOpen="False" AllowsTransparency="True">
+                                    <ContentControl Content="{Binding DataContext.AssemblyFilter, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    ContentTemplate="{StaticResource ExcelFilterPopupTemplate}"/>
+                                </Popup>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTextColumn.HeaderTemplate>
+                </DataGridTextColumn>
+
+                <!-- ============ Part Number ============ -->
+                <DataGridTextColumn Binding="{Binding PartNumber}" IsReadOnly="True" Width="225">
+                    <!-- Chuột phải mở Part của dòng này (cùng hành vi ô Hình ảnh) — xem mục 21 README. -->
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                            <Setter Property="VerticalAlignment" Value="Stretch"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Padding" Value="6,0"/>
+                            <Setter Property="ToolTip" Value="{Binding LinkedTooltip}"/>
+                            <EventSetter Event="ContextMenuOpening" Handler="RowCell_ContextMenuOpening"/>
+                            <Setter Property="ContextMenu" Value="{StaticResource PartNumberCellContextMenu}"/>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Header_PartNumber]}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="togglePN"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding DataContext.PartNumberFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource FilterDropdownButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.PartNumberFilter.IsActive, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True">
+                                                    <Setter Property="Foreground" Value="#0078D7"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                    <Setter Property="Content" Value="▼✦"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <Popup IsOpen="{Binding DataContext.PartNumberFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                       PlacementTarget="{Binding ElementName=togglePN}" Placement="Bottom"
+                                       StaysOpen="False" AllowsTransparency="True">
+                                    <ContentControl Content="{Binding DataContext.PartNumberFilter, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    ContentTemplate="{StaticResource ExcelFilterPopupTemplate}"/>
+                                </Popup>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTextColumn.HeaderTemplate>
+                </DataGridTextColumn>
+
+                <!-- ============ Hình ảnh ============ -->
+                <!-- Header="ImageColumn" là token nội bộ cố định (không hiển thị, bị HeaderTemplate ghi đè)
+                     để code-behind nhận diện cột này khi double-click, không phụ thuộc ngôn ngữ hiển thị. -->
+                <DataGridTemplateColumn Header="ImageColumn" Width="80">
+                    <DataGridTemplateColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Header_Image]}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.HeaderTemplate>
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid Background="Transparent"
+                                  Cursor="Hand"
+                                  ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_ImageCell]}"
+                                  ContextMenuOpening="RowCell_ContextMenuOpening">
+                                <Image Source="{Binding Thumbnail}" Width="64" Height="64" Stretch="Uniform"/>
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="{Binding Source={x:Static loc:Tr.Instance}, Path=[MenuItem_OpenPart]}" Click="MenuItemOpenPart_Click"/>
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- ============ Revision Number ============ -->
+                <DataGridTextColumn Binding="{Binding RevisionNumber}" IsReadOnly="True" Width="125">
+                    <DataGridTextColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Header_Revision]}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="toggleRN"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding DataContext.RevisionNumberFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource FilterDropdownButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.RevisionNumberFilter.IsActive, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True">
+                                                    <Setter Property="Foreground" Value="#0078D7"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                    <Setter Property="Content" Value="▼✦"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <Popup IsOpen="{Binding DataContext.RevisionNumberFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                       PlacementTarget="{Binding ElementName=toggleRN}" Placement="Bottom"
+                                       StaysOpen="False" AllowsTransparency="True">
+                                    <ContentControl Content="{Binding DataContext.RevisionNumberFilter, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    ContentTemplate="{StaticResource ExcelFilterPopupTemplate}"/>
+                                </Popup>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTextColumn.HeaderTemplate>
+                </DataGridTextColumn>
+
+                <!-- ============ Số lượng ============ -->
+                <DataGridTextColumn Binding="{Binding SoLuong}" IsReadOnly="True" Width="113">
+                    <DataGridTextColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Header_SoLuong]}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="toggleSL"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding DataContext.SoLuongFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource FilterDropdownButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.SoLuongFilter.IsActive, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True">
+                                                    <Setter Property="Foreground" Value="#0078D7"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                    <Setter Property="Content" Value="▼✦"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <Popup IsOpen="{Binding DataContext.SoLuongFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                       PlacementTarget="{Binding ElementName=toggleSL}" Placement="Bottom"
+                                       StaysOpen="False" AllowsTransparency="True">
+                                    <ContentControl Content="{Binding DataContext.SoLuongFilter, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    ContentTemplate="{StaticResource ExcelFilterPopupTemplate}"/>
+                                </Popup>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTextColumn.HeaderTemplate>
+                </DataGridTextColumn>
+
+                <!-- ============ Chiều dày/Vật Liệu ============ -->
+                <DataGridTextColumn Binding="{Binding ChieuDayVatLieu}" IsReadOnly="True" Width="200">
+                    <DataGridTextColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Header_ChieuDayVatLieu]}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="toggleCD"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding DataContext.ChieuDayFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource FilterDropdownButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.ChieuDayFilter.IsActive, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True">
+                                                    <Setter Property="Foreground" Value="#0078D7"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                    <Setter Property="Content" Value="▼✦"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <Popup IsOpen="{Binding DataContext.ChieuDayFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                       PlacementTarget="{Binding ElementName=toggleCD}" Placement="Bottom"
+                                       StaysOpen="False" AllowsTransparency="True">
+                                    <ContentControl Content="{Binding DataContext.ChieuDayFilter, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    ContentTemplate="{StaticResource ExcelFilterPopupTemplate}"/>
+                                </Popup>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTextColumn.HeaderTemplate>
+                </DataGridTextColumn>
+
+                <!-- ============ Tên file gốc ============ -->
+                <DataGridTextColumn Binding="{Binding TenFile}" IsReadOnly="True" Width="225">
+                    <DataGridTextColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Header_TenFile]}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="toggleTF"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding DataContext.TenFileFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource FilterDropdownButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.TenFileFilter.IsActive, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True">
+                                                    <Setter Property="Foreground" Value="#0078D7"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                    <Setter Property="Content" Value="▼✦"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <Popup IsOpen="{Binding DataContext.TenFileFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                       PlacementTarget="{Binding ElementName=toggleTF}" Placement="Bottom"
+                                       StaysOpen="False" AllowsTransparency="True">
+                                    <ContentControl Content="{Binding DataContext.TenFileFilter, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    ContentTemplate="{StaticResource ExcelFilterPopupTemplate}"/>
+                                </Popup>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTextColumn.HeaderTemplate>
+                </DataGridTextColumn>
+
+                <!-- ============ Dxf batch No ============ -->
+                <DataGridTextColumn Binding="{Binding DxfBatchNo, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="False" Width="175">
+                    <DataGridTextColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Header_DxfBatchNo]}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="toggleDB"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding DataContext.DxfBatchFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource FilterDropdownButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.DxfBatchFilter.IsActive, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True">
+                                                    <Setter Property="Foreground" Value="#0078D7"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                    <Setter Property="Content" Value="▼✦"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <Popup IsOpen="{Binding DataContext.DxfBatchFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                       PlacementTarget="{Binding ElementName=toggleDB}" Placement="Bottom"
+                                       StaysOpen="False" AllowsTransparency="True">
+                                    <ContentControl Content="{Binding DataContext.DxfBatchFilter, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    ContentTemplate="{StaticResource ExcelFilterPopupTemplate}"/>
+                                </Popup>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTextColumn.HeaderTemplate>
+                </DataGridTextColumn>
+
+                <!-- ============ Ghi chú ============ -->
+                <DataGridTextColumn Binding="{Binding GhiChu}" IsReadOnly="True" Width="*" MinWidth="150">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="TextWrapping" Value="Wrap"/>
+                            <Setter Property="VerticalAlignment" Value="Center"/>
+                            <Setter Property="Padding" Value="4,4"/>
+                            <Setter Property="Foreground" Value="Red"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsReady}" Value="True">
+                                    <Setter Property="Foreground" Value="Green"/>
+                                </DataTrigger>
+                                <!-- Chưa bấm "Kiểm tra Flat Pattern": Ghi chú = "Không xác định",
+                                     không tô đỏ (chưa biết là lỗi) lẫn xanh (chưa biết là sẵn sàng).
+                                     Trigger này đặt SAU trigger IsReady là chủ đích: khi chưa kiểm tra
+                                     thì IsReady luôn false nên chỉ trigger này áp dụng. -->
+                                <DataTrigger Binding="{Binding IsValidated}" Value="False">
+                                    <Setter Property="Foreground" Value="#E6A700"/>
+                                    <Setter Property="FontStyle" Value="Italic"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Header_GhiChu]}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="toggleGC"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              IsChecked="{Binding DataContext.GhiChuFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource FilterDropdownButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.GhiChuFilter.IsActive, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True">
+                                                    <Setter Property="Foreground" Value="#0078D7"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                    <Setter Property="Content" Value="▼✦"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <Popup IsOpen="{Binding DataContext.GhiChuFilter.IsOpen, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                       PlacementTarget="{Binding ElementName=toggleGC}" Placement="Bottom"
+                                       StaysOpen="False" AllowsTransparency="True">
+                                    <ContentControl Content="{Binding DataContext.GhiChuFilter, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    ContentTemplate="{StaticResource ExcelFilterPopupTemplate}"/>
+                                </Popup>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTextColumn.HeaderTemplate>
+                </DataGridTextColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Loading Overlay -->
+        <Border Grid.Row="0" Grid.RowSpan="3" Background="#CC1A1A2E"
+                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisConverter}}"
+                Panel.ZIndex="100">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Loading_Title]}" Foreground="White" FontSize="20" FontWeight="Bold"
+                           HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                <Border Background="#33FFFFFF" CornerRadius="6" Padding="5">
+                    <ProgressBar Width="420" Height="26" Value="{Binding LoadingProgress}" Maximum="100"
+                                 Foreground="#0078D7" Background="#44FFFFFF" BorderBrush="#55FFFFFF"/>
+                </Border>
+                <TextBlock Text="{Binding LoadingStatusText}" Foreground="#AAAAAA" FontSize="13"
+                           HorizontalAlignment="Center" Margin="0,10,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Bottom Panel: gợi ý phạm vi xuất bên trái, Đóng/Kiểm tra/Xuất bên phải.
+             Không còn nút Chọn tất cả/Bỏ chọn tất cả — mọi dòng đang hiển thị sau lọc chính là
+             tập dòng sẽ được xuất (xem README mục 6). -->
+        <Border Grid.Row="2" Background="White" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0" Padding="10">
+            <Grid>
+                <TextBlock HorizontalAlignment="Left" VerticalAlignment="Center" FontSize="11" Foreground="#8A93A3"
+                           MaxWidth="480" TextTrimming="CharacterEllipsis"
+                           Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Hint_FilterIsSelection]}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource ButtonDefault}" Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_ValidateFlatPattern]}" Command="{Binding ValidateFlatPatternCommand}"
+                            ToolTip="{Binding Source={x:Static loc:Tr.Instance}, Path=[Tooltip_ValidateFlatPattern]}" Width="150" Margin="0,0,10,0" Padding="6,4"
+                            Background="#40FFC107"/>
+                    <Button Style="{StaticResource ButtonPrimary}" Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_Export]}" Command="{Binding ExportCommand}" Width="110" Margin="0,0,10,0" Padding="6,4" FontWeight="Bold"/>
+                    <Button Style="{StaticResource ButtonDefault}" Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_CloseWindow]}" Click="BtnCancel_Click" Width="90" Padding="6,4"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        </Grid>
+
+        <!-- ============ Nội dung: "Lịch sử xuất" (UserControl riêng, xem README mục 6b) ============ -->
+        <views:ExportHistoryView x:Name="HistoryView" Grid.Column="1" Visibility="Collapsed"/>
+
+        <!-- ============ Nội dung: "Cấu hình Layer" (UserControl riêng, xem README mục 6b) ============ -->
+        <views:LayerConfigView x:Name="LayerConfigViewCtrl" Grid.Column="1" Visibility="Collapsed"/>
+    </Grid>
+</Window>

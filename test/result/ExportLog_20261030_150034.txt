@@ -1,0 +1,10 @@
+﻿=== KẾT QUẢ XUẤT DXF SOLIDCRAFT ===
+2026-10-30 15:00:34
+
+Số file xuất thành công: 6
+  [OK] Hop_1_PL4-Default.dxf
+  [OK] spline_1_PL2.5-Default.dxf
+  [OK] up_down_1_PL2.5-Default.dxf
+  [OK] P-1_1_PL2.5-Default.dxf
+  [OK] P-2_1_PL2.5-Default.dxf
+  [OK] P-3_1_PL10-SS-400.dxf

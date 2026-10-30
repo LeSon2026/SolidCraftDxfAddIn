@@ -1,0 +1,154 @@
+<UserControl x:Class="ExportDxfAddIn.Views.LayerConfigView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:ExportDxfAddIn.Services"
+             mc:Ignorable="d" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008">
+
+    <!-- UserControl riêng cho tính năng "Cấu hình Layer" (đúng quy ước README mục 6b/11: 1 tính năng
+         lớn = 1 UserControl riêng, tự khai style, không đụng layout "Xuất DXF"/"Lịch sử xuất"). Đưa
+         danh sách layer/màu ACI vốn hard-code trong DxfPostProcessor.cs (README mục 5) ra 1 màn hình
+         chỉnh được, lưu qua LayerConfigService vào %AppData%\ExportDxfAddIn\layerconfig.json. -->
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+        <Style x:Key="LayerConfigButton" TargetType="Button">
+            <Setter Property="Background" Value="#0078D7"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#005A9E"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="LayerConfigButtonSecondary" TargetType="Button" BasedOn="{StaticResource LayerConfigButton}">
+            <Setter Property="Background" Value="#E9EDF2"/>
+            <Setter Property="Foreground" Value="#37414F"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#D8DEE6"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="#F5F5F5">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header: đồng bộ bố cục với header "Lịch sử xuất" -->
+        <Border Grid.Row="0" Background="White" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1" Padding="16,9">
+            <Grid>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[Nav_LayerConfig]}"
+                               FontSize="15" FontWeight="Bold" Foreground="#1B2330"/>
+                    <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[LayerConfig_Subtitle]}"
+                               FontSize="11" Foreground="#8A93A3" Margin="0,2,0,0"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="#1E8E3E" FontSize="11"
+                               VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <Button Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_LayerConfigReset]}"
+                            Command="{Binding ResetCommand}" Style="{StaticResource LayerConfigButtonSecondary}"/>
+                    <Button Content="{Binding Source={x:Static loc:Tr.Instance}, Path=[Btn_LayerConfigSave]}"
+                            Command="{Binding SaveCommand}" Style="{StaticResource LayerConfigButton}" Margin="8,0,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Nội dung: DataGrid danh sách layer cố định (số dòng = LayerConfigService.GetDefaults().Count,
+             thêm 2026-08-26: 18 layer, xem README mục 12) -->
+        <Grid Grid.Row="1" Margin="16">
+            <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" CanUserAddRows="False"
+                      CanUserDeleteRows="False" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                      RowHeaderWidth="0" Background="White" BorderBrush="#DDDDDD" BorderThickness="1"
+                      AlternatingRowBackground="#FAFBFC" MinRowHeight="34">
+                <!-- Ghi đè tường minh màu ô đang chọn — theme HandyControl (merge trong
+                     Window.Resources của MainWindow, áp implicit lên MỌI DataGrid trong cửa sổ kể cả
+                     trong UserControl con, xem README mục 6b) tô màu chọn không nhất quán giữa các
+                     dòng — cùng cách MainDataGrid/ExportHistoryView đã fix.
+                     ⚠ Đã thử thêm DataGrid.RowStyle (Trigger IsSelected -> Background) để phủ luôn
+                     phần nền trống bên phải cột "Xem trước" (4 cột đều Width cố định, cộng lại hẹp hơn
+                     DataGrid) — KHÔNG dùng được: xung đột với Trigger AlternatingRowBackground có sẵn
+                     trong style mặc định của DataGridRow (dựa trên AlternationIndex chẵn/lẻ), chỉ tô
+                     đúng phần đó ở dòng lẻ, dòng chẵn vẫn sai. Fix đúng: bỏ RowStyle, đổi cột "Xem
+                     trước" (cột cuối) sang Width="*" như MainDataGrid (cột Ghi chú)/ExportHistoryView
+                     (cột FileName) đã làm — cột cuối chiếm hết phần dư ra nên KHÔNG còn phần nền trống
+                     ngoài mọi DataGridCell nữa, CellStyle một mình là đủ, nhất quán mọi dòng. -->
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#C7EED8"/>
+                                <Setter Property="Foreground" Value="Black"/>
+                                <Setter Property="BorderBrush" Value="#C7EED8"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.CellStyle>
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#F0F1F3"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="Padding" Value="8,7"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Binding="{Binding Name}" IsReadOnly="True" Width="240">
+                        <DataGridTextColumn.Header>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[LayerConfig_Header_Name]}"/>
+                        </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
+                    <DataGridCheckBoxColumn Binding="{Binding DeleteEntities, UpdateSourceTrigger=PropertyChanged}" Width="150">
+                        <DataGridCheckBoxColumn.Header>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[LayerConfig_Header_Delete]}"/>
+                        </DataGridCheckBoxColumn.Header>
+                    </DataGridCheckBoxColumn>
+                    <DataGridTemplateColumn Width="130">
+                        <DataGridTemplateColumn.Header>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[LayerConfig_Header_Color]}"/>
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBox Text="{Binding AciColor, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{Binding IsColorEditable}"
+                                         Width="60" VerticalContentAlignment="Center"
+                                         HorizontalAlignment="Left" Margin="4,2"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Width="*" MinWidth="90">
+                        <DataGridTemplateColumn.Header>
+                            <TextBlock Text="{Binding Source={x:Static loc:Tr.Instance}, Path=[LayerConfig_Header_Preview]}"/>
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Width="28" Height="18" CornerRadius="3" BorderBrush="#CCCCCC" BorderThickness="1"
+                                        Background="{Binding ColorPreview}" Margin="4,2" HorizontalAlignment="Left"
+                                        Visibility="{Binding IsColorEditable, Converter={StaticResource BoolToVisConverter}}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
+    </Grid>
+</UserControl>
